@@ -18,6 +18,3 @@ storage: "storage.db"
 ```
 
 ## TODO
-
-- do not ping oneself
-- do not ping message author
