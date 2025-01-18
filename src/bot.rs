@@ -3,7 +3,10 @@ use std::fmt::Write;
 use teloxide::{
     adaptors::{throttle::Limits, CacheMe, DefaultParseMode, Throttle},
     prelude::*,
-    types::{AllowedUpdate, MessageId, MessageKind, ParseMode, ReplyParameters, Update},
+    types::{
+        AllowedUpdate, ChatMember, ChatMemberKind, MessageId, MessageKind, ParseMode,
+        ReplyParameters, Update,
+    },
     update_listeners::Polling,
     utils::{command::BotCommands, markdown},
     Bot,
@@ -127,20 +130,41 @@ async fn unauthorized_command_handler(
 }
 
 #[tracing::instrument(skip_all)]
-async fn message_handler(_bot: MyBot, msg: Message, storage: Storage) -> ResponseResult<()> {
+async fn message_handler(
+    bot: MyBot,
+    msg: Message,
+    storage: Storage,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     match msg.kind {
         MessageKind::NewChatMembers(members) => {
             for user in members.new_chat_members {
-                storage.new_member(msg.chat.id, &user).await.unwrap();
+                storage.new_member(msg.chat.id, &user).await?;
             }
         }
         MessageKind::LeftChatMember(member) => {
             storage
                 .delete_member(msg.chat.id, member.left_chat_member.id)
-                .await
-                .unwrap();
+                .await?;
         }
-        _ => {}
+        _ => {
+            for user in msg.mentioned_users() {
+                if let Ok(ChatMember { user, kind }) =
+                    bot.get_chat_member(msg.chat.id, user.id).await
+                {
+                    match kind {
+                        ChatMemberKind::Owner(_)
+                        | ChatMemberKind::Administrator(_)
+                        | ChatMemberKind::Member => {
+                            storage.new_member(msg.chat.id, &user).await?;
+                        }
+                        ChatMemberKind::Left | ChatMemberKind::Banned(_) => {
+                            storage.delete_member(msg.chat.id, user.id).await?
+                        }
+                        ChatMemberKind::Restricted(_) => {}
+                    }
+                }
+            }
+        }
     }
     Ok(())
 }
