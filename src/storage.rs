@@ -48,7 +48,7 @@ impl Storage {
             &user.last_name.as_ref().map_or("<none>", |v| v),
         );
         sqlx::query(
-            "INSERT INTO members (chat_id, user_id, username, first_name, last_name) VALUES (?, ?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO members (chat_id, user_id, username, first_name, last_name) VALUES (?, ?, ?, ?, ?)",
         )
         .bind(chat_id.0)
         .bind(user.id.to_string())
