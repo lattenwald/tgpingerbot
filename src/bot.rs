@@ -93,6 +93,10 @@ async fn unauthorized_command_handler(
             .await;
         }
         UnauthorizedCommand::Ping => {
+            if let Some(ref from) = msg.from {
+                let _ = storage.new_member(msg.chat.id, from).await;
+            }
+
             let reply_to_msg_id = msg.reply_to_message().map(|msg| msg.id).unwrap_or(msg.id);
             let members = storage.chat_members(msg.chat.id).await.unwrap();
 
@@ -103,8 +107,18 @@ async fn unauthorized_command_handler(
                 return Ok(());
             }
             for member in members {
+                if member.is_bot {
+                    continue;
+                }
+                if msg
+                    .from
+                    .as_ref()
+                    .is_some_and(|f| f.id.0.to_string() == member.user_id)
+                {
+                    continue;
+                }
                 let mention = match member.username {
-                    Some(username) => format!("@{}", username),
+                    Some(username) => format!("@{}", markdown::escape(&username)),
                     None => format!(
                         "[{}](tg://user?id={})",
                         markdown::escape(&member.first_name),
@@ -175,6 +189,7 @@ async fn message_handler(bot: MyBot, msg: Message, storage: Storage) -> Response
 }
 
 async fn reply(bot: &MyBot, chat_id: ChatId, msg_id: MessageId, text: &str) {
+    debug!("sending message: {}", text);
     if let Err(err) = bot
         .send_message(chat_id, text)
         .reply_parameters(ReplyParameters {

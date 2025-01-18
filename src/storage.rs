@@ -26,9 +26,13 @@ impl Storage {
             "CREATE TABLE IF NOT EXISTS members (
                 chat_id INTEGER NOT NULL,
                 user_id TEXT NOT NULL,
+                is_bot BOOLEAN NOT NULL DEFAULT FALSE,
                 username TEXT,
                 first_name TEXT NOT NULL,
                 last_name TEXT,
+                language TEXT,
+                is_premium BOOLEAN NOT NULL DEFAULT FALSE,
+                added_to_attachment_menu BOOLEAN NOT NULL DEFAULT FALSE,
                 PRIMARY KEY (chat_id, user_id)
             )",
         )
@@ -89,8 +93,27 @@ impl Storage {
 #[derive(sqlx::FromRow)]
 pub(crate) struct Member {
     pub(crate) chat_id: i64,
+    pub(crate) is_bot: bool,
     pub(crate) user_id: String,
     pub(crate) username: Option<String>,
     pub(crate) first_name: String,
     pub(crate) last_name: Option<String>,
+    pub(crate) language: Option<String>,
+    pub(crate) is_premium: bool,
+    pub(crate) added_to_attachment_menu: bool,
+}
+
+impl From<Member> for User {
+    fn from(value: Member) -> Self {
+        User {
+            id: UserId(value.user_id.parse().unwrap()),
+            is_bot: value.is_bot,
+            username: value.username,
+            first_name: value.first_name,
+            last_name: value.last_name,
+            language_code: value.language,
+            is_premium: value.is_premium,
+            added_to_attachment_menu: value.added_to_attachment_menu,
+        }
+    }
 }
