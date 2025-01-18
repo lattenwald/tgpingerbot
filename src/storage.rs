@@ -2,6 +2,7 @@ use std::path::Path;
 
 use sqlx::{sqlite::SqliteConnectOptions, SqlitePool};
 use teloxide::types::{ChatId, User, UserId};
+use tracing::{debug, trace};
 
 #[derive(Debug, Clone)]
 pub struct Storage {
@@ -10,6 +11,7 @@ pub struct Storage {
 
 impl Storage {
     pub async fn init(file: &Path) -> Result<Self, Box<dyn std::error::Error>> {
+        debug!("init storage");
         let opts = SqliteConnectOptions::new()
             .filename(file)
             .create_if_missing(true);
@@ -19,6 +21,7 @@ impl Storage {
     }
 
     async fn create_tables(pool: &sqlx::Pool<sqlx::Sqlite>) -> Result<(), sqlx::Error> {
+        trace!("try create tables");
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS members (
                 chat_id INTEGER NOT NULL,
@@ -36,6 +39,14 @@ impl Storage {
     }
 
     pub(crate) async fn new_member(&self, chat_id: ChatId, user: &User) -> Result<(), sqlx::Error> {
+        debug!(
+            "adding member chat_id: {} user_id: {} username: {:?} first_name: {} last_name: {}",
+            chat_id,
+            user.id,
+            &user.username.as_ref().map_or("<none>", |v| v),
+            &user.first_name,
+            &user.last_name.as_ref().map_or("<none>", |v| v),
+        );
         sqlx::query(
             "INSERT INTO members (chat_id, user_id, username, first_name, last_name) VALUES (?, ?, ?, ?, ?)",
         )
@@ -54,6 +65,7 @@ impl Storage {
         chat_id: ChatId,
         user_id: UserId,
     ) -> Result<(), sqlx::Error> {
+        debug!("deleting member chat_id: {} user_id: {}", chat_id, user_id);
         sqlx::query("DELETE FROM members WHERE chat_id = ? AND user_id = ?")
             .bind(chat_id.0)
             .bind(user_id.to_string())

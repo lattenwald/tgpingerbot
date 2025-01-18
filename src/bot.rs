@@ -11,7 +11,7 @@ use teloxide::{
     utils::{command::BotCommands, markdown},
     Bot,
 };
-use tracing::{debug, warn};
+use tracing::{debug, error, warn};
 
 use crate::storage::Storage;
 
@@ -130,21 +130,22 @@ async fn unauthorized_command_handler(
 }
 
 #[tracing::instrument(skip_all)]
-async fn message_handler(
-    bot: MyBot,
-    msg: Message,
-    storage: Storage,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn message_handler(bot: MyBot, msg: Message, storage: Storage) -> ResponseResult<()> {
     match msg.kind {
         MessageKind::NewChatMembers(members) => {
             for user in members.new_chat_members {
-                storage.new_member(msg.chat.id, &user).await?;
+                if let Err(err) = storage.new_member(msg.chat.id, &user).await {
+                    error!("failed adding member: {}", err);
+                }
             }
         }
         MessageKind::LeftChatMember(member) => {
-            storage
+            if let Err(err) = storage
                 .delete_member(msg.chat.id, member.left_chat_member.id)
-                .await?;
+                .await
+            {
+                error!("failed deleting member: {}", err);
+            }
         }
         _ => {
             for user in msg.mentioned_users() {
@@ -155,10 +156,14 @@ async fn message_handler(
                         ChatMemberKind::Owner(_)
                         | ChatMemberKind::Administrator(_)
                         | ChatMemberKind::Member => {
-                            storage.new_member(msg.chat.id, &user).await?;
+                            if let Err(err) = storage.new_member(msg.chat.id, &user).await {
+                                error!("failed adding member: {}", err);
+                            }
                         }
                         ChatMemberKind::Left | ChatMemberKind::Banned(_) => {
-                            storage.delete_member(msg.chat.id, user.id).await?
+                            if let Err(err) = storage.delete_member(msg.chat.id, user.id).await {
+                                error!("failed deleting member: {}", err);
+                            }
                         }
                         ChatMemberKind::Restricted(_) => {}
                     }
