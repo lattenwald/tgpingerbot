@@ -2,7 +2,7 @@ use std::path::Path;
 
 use sqlx::{sqlite::SqliteConnectOptions, SqlitePool};
 use teloxide::types::{ChatId, User, UserId};
-use tracing::{debug, trace};
+use tracing::{debug, info, trace};
 
 #[derive(Debug, Clone)]
 pub struct Storage {
@@ -39,15 +39,7 @@ impl Storage {
     }
 
     pub(crate) async fn new_member(&self, chat_id: ChatId, user: &User) -> Result<(), sqlx::Error> {
-        debug!(
-            "adding member chat_id: {} user_id: {} username: {:?} first_name: {} last_name: {}",
-            chat_id,
-            user.id,
-            &user.username.as_ref().map_or("<none>", |v| v),
-            &user.first_name,
-            &user.last_name.as_ref().map_or("<none>", |v| v),
-        );
-        sqlx::query(
+        let result = sqlx::query(
             "INSERT OR IGNORE INTO members (chat_id, user_id, username, first_name, last_name) VALUES (?, ?, ?, ?, ?)",
         )
         .bind(chat_id.0)
@@ -57,6 +49,16 @@ impl Storage {
         .bind(user.last_name.clone())
         .execute(&self.pool)
         .await?;
+        if result.rows_affected() > 0 {
+            info!(
+                "added member chat_id: {} user_id: {} username: {:?} first_name: {} last_name: {}",
+                chat_id,
+                user.id,
+                &user.username.as_ref().map_or("<none>", |v| v),
+                &user.first_name,
+                &user.last_name.as_ref().map_or("<none>", |v| v)
+            );
+        }
         Ok(())
     }
 
@@ -65,12 +67,14 @@ impl Storage {
         chat_id: ChatId,
         user_id: UserId,
     ) -> Result<(), sqlx::Error> {
-        debug!("deleting member chat_id: {} user_id: {}", chat_id, user_id);
-        sqlx::query("DELETE FROM members WHERE chat_id = ? AND user_id = ?")
+        let result = sqlx::query("DELETE FROM members WHERE chat_id = ? AND user_id = ?")
             .bind(chat_id.0)
             .bind(user_id.to_string())
             .execute(&self.pool)
             .await?;
+        if result.rows_affected() > 0 {
+            info!("deleted member chat_id: {} user_id: {}", chat_id, user_id);
+        }
         Ok(())
     }
 
