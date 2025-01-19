@@ -187,7 +187,7 @@ async fn command_handler(
                     ChatMemberKind::Owner(_)
                     | ChatMemberKind::Administrator(_)
                     | ChatMemberKind::Member => {
-                        if let Err(err) = storage.new_member(msg.chat.id, &user).await {
+                        if let Err(err) = storage.new_member(chat_id, &user).await {
                             error!("failed adding member: {}", err);
                             reply(&bot, msg.chat.id, msg.id, "Пользователь не добавлен").await;
                         } else {
@@ -195,7 +195,7 @@ async fn command_handler(
                         }
                     }
                     ChatMemberKind::Left | ChatMemberKind::Banned(_) => {
-                        if let Err(err) = storage.delete_member(msg.chat.id, user.id).await {
+                        if let Err(err) = storage.delete_member(chat_id, user.id).await {
                             error!("failed deleting member: {}", err);
                             reply(&bot, msg.chat.id, msg.id, "Пользователь не удален").await;
                         } else {
