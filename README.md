@@ -13,9 +13,11 @@
 Configuration in YAML format is expected. Example `config.yaml`:
 
 ```yaml
-token: "123452345:324583y45wejkrh32498p57"
 storage: "storage.db"
-admin_id: 123871269386
+
+bot:
+  token: "123452345:324583y45wejkrh32498p57"
+  admin_id: 123871269386
 ```
 
 `admin_id` is `i64` id of admin user, there are some admin commands that can be used by that user.
