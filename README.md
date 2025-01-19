@@ -18,3 +18,5 @@ storage: "storage.db"
 ```
 
 ## TODO
+
+- DB normal form
