@@ -1,7 +1,8 @@
-use std::path::PathBuf;
+use std::{net::SocketAddr, path::PathBuf};
 
 use clap::Parser;
 use serde::Deserialize;
+use url::Url;
 
 #[derive(Debug, Clone, Parser)]
 #[command(author, version, about, long_about = None)]
@@ -17,9 +18,21 @@ impl Args {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
-    pub token: String,
+    pub bot: BotConfig,
     pub storage: PathBuf,
-    pub admin_id: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct BotConfig {
+    pub token: String,
+    pub admin_id: Option<i64>,
+    pub webhook: Option<WebhookConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct WebhookConfig {
+    pub url: Url,
+    pub socket: SocketAddr,
 }
 
 impl Config {

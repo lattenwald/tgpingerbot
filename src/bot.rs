@@ -13,23 +13,30 @@ use teloxide::{
 };
 use tracing::{debug, error, warn};
 
-use crate::storage::Storage;
+use crate::{config::BotConfig, storage::Storage};
 
 pub type MyBot = Throttle<CacheMe<DefaultParseMode<Bot>>>;
 pub type MyDispatcher =
     Dispatcher<MyBot, teloxide::RequestError, teloxide::dispatching::DefaultKey>;
 
-pub async fn start_bot(token: String, storage: Storage, admin_id: i64) {
-    let bot = Bot::new(token.clone())
+pub async fn start_bot(
+    config: BotConfig,
+    storage: Storage,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let bot = Bot::new(config.token)
         .parse_mode(ParseMode::MarkdownV2)
         .cache_me()
         .throttle(Limits::default());
 
     let handler = Update::filter_message()
         .branch(
-            dptree::filter(move |msg: Message| msg.chat.id.0 == admin_id)
-                .filter_command::<Command>()
-                .endpoint(command_handler),
+            dptree::filter(move |msg: Message| {
+                config
+                    .admin_id
+                    .is_some_and(|admin_id| admin_id == msg.chat.id.0)
+            })
+            .filter_command::<Command>()
+            .endpoint(command_handler),
         )
         .branch(
             dptree::entry()
@@ -46,15 +53,30 @@ pub async fn start_bot(token: String, storage: Storage, admin_id: i64) {
         .dependencies(dptree::deps![storage])
         .build();
 
-    let polling = Polling::builder(bot)
-        .allowed_updates(vec![AllowedUpdate::Message, AllowedUpdate::ChatMember])
-        .build();
+    let allowed_updates = vec![AllowedUpdate::Message, AllowedUpdate::ChatMember];
+    if let Some(_webhook_config) = config.webhook {
+        unimplemented!()
+        // let (webhook, _, router) = webhooks::axum_no_setup(webhooks::Options::new(
+        //     webhook_config.socket,
+        //     webhook_config.url.clone(),
+        // ));
+        // bot.set_webhook(webhook_config.url)
+        //     .allowed_updates(allowed_updates)
+        //     .send()
+        //     .await?;
+    } else {
+        bot.delete_webhook().send().await?;
+        let polling = Polling::builder(bot)
+            .allowed_updates(allowed_updates)
+            .build();
+        let error_handler =
+            LoggingErrorHandler::with_custom_text("An error from the update listener");
+        dispatcher
+            .dispatch_with_listener(polling, error_handler)
+            .await;
+    };
 
-    let error_handler = LoggingErrorHandler::with_custom_text("An error from the update listener");
-
-    dispatcher
-        .dispatch_with_listener(polling, error_handler)
-        .await;
+    Ok(())
 }
 
 #[derive(BotCommands, Clone, Debug)]

@@ -8,7 +8,8 @@ clap = { version = "4.5.26", features = ["derive"] }
 serde = { version = "1.0.217", features = ["derive"] }
 serde_yml = "0.0.12"
 sqlx = { version = "0.8.3", default-features = false, features = ["sqlite", "macros", "runtime-tokio"] }
-teloxide = { version = "0.13.0", default-features = true, features = ["cache-me", "throttle", "trace-adaptor", "macros"] }
+teloxide = { version = "0.13.0", default-features = true, features = ["cache-me", "throttle", "trace-adaptor", "macros", "webhooks-axum"] }
 tokio = { version = "1.43.0", default-features = true, features = ["full"] }
 tracing = { version = "0.1.41", features = ["max_level_trace", "release_max_level_trace"] }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+url = "2.5.4"

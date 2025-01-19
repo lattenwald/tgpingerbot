@@ -18,7 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let storage = Storage::init(&config.storage).await.unwrap();
     info!("Storage ok");
 
-    start_bot(config.token, storage, config.admin_id).await;
+    start_bot(config.bot, storage).await?;
     info!("bot started");
 
     Ok(())
