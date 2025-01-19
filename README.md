@@ -20,7 +20,7 @@ bot:
   admin_id: 123871269386
 ```
 
-`admin_id` is `i64` id of admin user, there are some admin commands that can be used by that user.
+`admin_id` is `i64` id of admin user, there are some admin commands that can be used by that user. It is optional.
 
 ## TODO
 
