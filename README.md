@@ -6,7 +6,7 @@
 2. configure (see CONFIGURATION)
 3. run `./target/release/tgpingbot config.yaml`
 4. add telegram bot to your group, with access to messages
-5. start pinging! (with `/ping` command in your group). The bot pings everyones it knows, for it to know some user said user should say something in group.
+5. start pinging! (with `/ping` command in your group). The bot pings everyones it knows, for it to know some user said user should say something in group. You can also introduce someone to bot with admin command `/add_user <chat_id> <user_id>`, where both `chat_id` and `user_id` are `i64`.
 
 ## CONFIGURATION
 
