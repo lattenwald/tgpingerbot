@@ -73,6 +73,9 @@ async fn unauthorized_command_handler(
     storage: Storage,
 ) -> ResponseResult<()> {
     debug!("unauthorized command: {:?}", cmd);
+    if let Some(ref from) = msg.from {
+        let _ = storage.new_member(msg.chat.id, from).await;
+    }
     match cmd {
         UnauthorizedCommand::Id => {
             if let Err(err) = bot
@@ -93,10 +96,6 @@ async fn unauthorized_command_handler(
             .await;
         }
         UnauthorizedCommand::Ping => {
-            if let Some(ref from) = msg.from {
-                let _ = storage.new_member(msg.chat.id, from).await;
-            }
-
             let reply_to_msg_id = msg.reply_to_message().map(|msg| msg.id).unwrap_or(msg.id);
             let members = storage.chat_members(msg.chat.id).await.unwrap();
 
