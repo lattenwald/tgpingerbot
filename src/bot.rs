@@ -58,7 +58,7 @@ pub async fn start_bot(token: String, storage: Storage, admin_id: i64) {
 }
 
 #[derive(BotCommands, Clone, Debug)]
-#[command(rename_rule = "snake_case", description = "Доступные команды:")]
+#[command(rename_rule = "snake_case", description = "Общие команды:")]
 enum UnauthorizedCommand {
     #[command(description = "id текущего чата")]
     Id,
@@ -71,7 +71,7 @@ enum UnauthorizedCommand {
 }
 
 #[derive(BotCommands, Clone, Debug)]
-#[command(rename_rule = "snake_case", description = "Доступные команды:")]
+#[command(rename_rule = "snake_case", description = "Админские команды:")]
 enum Command {
     #[command(description = "добавить пользователя", parse_with = "split")]
     AddUser(String, String),
@@ -167,7 +167,7 @@ async fn command_handler(
     match cmd {
         Command::Help => {
             let help = format!(
-                "*Авторизованные команды:*\n\n{}\n\n*Неавторизованные команды:*\n\n{}",
+                "{}\n\n{}",
                 Command::descriptions(),
                 UnauthorizedCommand::descriptions()
             );
