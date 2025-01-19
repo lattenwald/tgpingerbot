@@ -44,13 +44,31 @@ impl Storage {
 
     pub(crate) async fn new_member(&self, chat_id: ChatId, user: &User) -> Result<(), sqlx::Error> {
         let result = sqlx::query(
-            "INSERT OR IGNORE INTO members (chat_id, user_id, username, first_name, last_name) VALUES (?, ?, ?, ?, ?)",
+            "INSERT
+            INTO members (
+                chat_id, user_id, is_bot, username, first_name,
+                last_name, language, is_premium, added_to_attachment_menu
+                )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (chat_id, user_id)
+            DO UPDATE SET
+                is_bot = EXCLUDED.is_bot,
+                username = EXCLUDED.username,
+                first_name = EXCLUDED.first_name,
+                last_name = EXCLUDED.last_name,
+                language = EXCLUDED.language,
+                is_premium = EXCLUDED.is_premium,
+                added_to_attachment_menu = EXCLUDED.added_to_attachment_menu",
         )
         .bind(chat_id.0)
         .bind(user.id.to_string())
+        .bind(user.is_bot)
         .bind(user.username.clone())
         .bind(user.first_name.clone())
         .bind(user.last_name.clone())
+        .bind(user.language_code.clone())
+        .bind(user.is_premium)
+        .bind(user.added_to_attachment_menu)
         .execute(&self.pool)
         .await?;
         if result.rows_affected() > 0 {
