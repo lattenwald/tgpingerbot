@@ -19,6 +19,7 @@ impl Args {
 pub struct Config {
     pub token: String,
     pub storage: PathBuf,
+    pub admin_id: i64,
 }
 
 impl Config {

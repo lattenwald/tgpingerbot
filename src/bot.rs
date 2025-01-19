@@ -19,13 +19,18 @@ pub type MyBot = Throttle<CacheMe<DefaultParseMode<Bot>>>;
 pub type MyDispatcher =
     Dispatcher<MyBot, teloxide::RequestError, teloxide::dispatching::DefaultKey>;
 
-pub async fn start_bot(token: String, storage: Storage) {
+pub async fn start_bot(token: String, storage: Storage, admin_id: i64) {
     let bot = Bot::new(token.clone())
         .parse_mode(ParseMode::MarkdownV2)
         .cache_me()
         .throttle(Limits::default());
 
     let handler = Update::filter_message()
+        .branch(
+            dptree::filter(move |msg: Message| msg.chat.id.0 == admin_id)
+                .filter_command::<Command>()
+                .endpoint(command_handler),
+        )
         .branch(
             dptree::entry()
                 .filter_command::<UnauthorizedCommand>()
@@ -60,6 +65,16 @@ enum UnauthorizedCommand {
 
     #[command(description = "пингануть всех")]
     Ping,
+
+    #[command(description = "помощь")]
+    Help,
+}
+
+#[derive(BotCommands, Clone, Debug)]
+#[command(rename_rule = "snake_case", description = "Доступные команды:")]
+enum Command {
+    #[command(description = "добавить пользователя", parse_with = "split")]
+    AddUser(String, String),
 
     #[command(description = "помощь")]
     Help,
@@ -136,6 +151,61 @@ async fn unauthorized_command_handler(
 
             if count > 0 {
                 reply(&bot, msg.chat.id, reply_to_msg_id, &buf).await;
+            }
+        }
+    }
+    Ok(())
+}
+
+#[tracing::instrument(skip_all)]
+async fn command_handler(
+    bot: MyBot,
+    msg: Message,
+    cmd: Command,
+    storage: Storage,
+) -> ResponseResult<()> {
+    match cmd {
+        Command::Help => {
+            let help = format!(
+                "*Авторизованные команды:*\n\n{}\n\n*Неавторизованные команды:*\n\n{}",
+                Command::descriptions(),
+                UnauthorizedCommand::descriptions()
+            );
+            reply(&bot, msg.chat.id, msg.id, &markdown::escape(&help)).await;
+        }
+        Command::AddUser(chat_id, user_id) => {
+            let Ok(chat_id) = chat_id.parse::<i64>().map(ChatId) else {
+                reply(&bot, msg.chat.id, msg.id, "Неправильный id чата").await;
+                return Ok(());
+            };
+            let Ok(user_id) = user_id.parse().map(UserId) else {
+                reply(&bot, msg.chat.id, msg.id, "Неправильный id пользователя").await;
+                return Ok(());
+            };
+            if let Ok(ChatMember { user, kind }) = bot.get_chat_member(chat_id, user_id).await {
+                match kind {
+                    ChatMemberKind::Owner(_)
+                    | ChatMemberKind::Administrator(_)
+                    | ChatMemberKind::Member => {
+                        if let Err(err) = storage.new_member(msg.chat.id, &user).await {
+                            error!("failed adding member: {}", err);
+                            reply(&bot, msg.chat.id, msg.id, "Пользователь не добавлен").await;
+                        } else {
+                            reply(&bot, msg.chat.id, msg.id, "Пользователь добавлен").await;
+                        }
+                    }
+                    ChatMemberKind::Left | ChatMemberKind::Banned(_) => {
+                        if let Err(err) = storage.delete_member(msg.chat.id, user.id).await {
+                            error!("failed deleting member: {}", err);
+                            reply(&bot, msg.chat.id, msg.id, "Пользователь не удален").await;
+                        } else {
+                            reply(&bot, msg.chat.id, msg.id, "Пользователь удален").await;
+                        }
+                    }
+                    ChatMemberKind::Restricted(_) => {}
+                }
+            } else {
+                reply(&bot, msg.chat.id, msg.id, "Пользователь не найден").await;
             }
         }
     }
