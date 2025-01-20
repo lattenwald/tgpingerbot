@@ -32,7 +32,7 @@ pub struct BotConfig {
 #[derive(Debug, Clone, Deserialize)]
 pub struct WebhookConfig {
     pub url: Url,
-    pub socket: SocketAddr,
+    pub address: SocketAddr,
 }
 
 impl Config {

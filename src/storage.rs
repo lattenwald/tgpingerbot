@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use sqlx::{sqlite::SqliteConnectOptions, SqlitePool};
+use sqlx::{sqlite::SqliteConnectOptions, Row, SqlitePool};
 use teloxide::types::{ChatId, User, UserId};
 use tracing::{debug, info, trace};
 
@@ -105,6 +105,14 @@ impl Storage {
             .bind(chat_id.0)
             .fetch_all(&self.pool)
             .await
+    }
+
+    pub(crate) async fn chat_members_count(&self, chat_id: ChatId) -> Result<u64, sqlx::Error> {
+        sqlx::query("SELECT COUNT(*) FROM members WHERE chat_id = ? AND NOT(is_bot)")
+            .bind(chat_id.0)
+            .fetch_one(&self.pool)
+            .await
+            .map(|row| row.get(0))
     }
 }
 

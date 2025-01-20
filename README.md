@@ -17,10 +17,19 @@ storage: "storage.db"
 
 bot:
   token: "123452345:324583y45wejkrh32498p57"
-  admin_id: 123871269386
+  admin_id: 123871269386 # optional
+  webhook: # optional
+    url: "https://example.com/webhook"
+    address: 127.0.0.1:8080
 ```
 
 `admin_id` is `i64` id of admin user, there are some admin commands that can be used by that user. It is optional.
+
+### webhook
+
+If `webhook` is present, bot will use webhook. If not, it will use long-polling.
+
+`/bot<token>` will be appended to webhook url. Bot will listen at `address`, make sure to proxy `url` to `address` with nginx or something.
 
 ## TODO
 

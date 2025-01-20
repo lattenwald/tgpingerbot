@@ -7,7 +7,7 @@ use teloxide::{
         AllowedUpdate, ChatMember, ChatMemberKind, MessageId, MessageKind, ParseMode,
         ReplyParameters, Update,
     },
-    update_listeners::Polling,
+    update_listeners::{webhooks, Polling},
     utils::{command::BotCommands, markdown},
     Bot,
 };
@@ -23,7 +23,7 @@ pub async fn start_bot(
     config: BotConfig,
     storage: Storage,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let bot = Bot::new(config.token)
+    let bot = Bot::new(config.token.clone())
         .parse_mode(ParseMode::MarkdownV2)
         .cache_me()
         .throttle(Limits::default());
@@ -54,25 +54,34 @@ pub async fn start_bot(
         .build();
 
     let allowed_updates = vec![AllowedUpdate::Message, AllowedUpdate::ChatMember];
-    if let Some(_webhook_config) = config.webhook {
-        unimplemented!()
-        // let (webhook, _, router) = webhooks::axum_no_setup(webhooks::Options::new(
-        //     webhook_config.socket,
-        //     webhook_config.url.clone(),
-        // ));
-        // bot.set_webhook(webhook_config.url)
-        //     .allowed_updates(allowed_updates)
-        //     .send()
-        //     .await?;
+    if let Some(webhook_config) = config.webhook {
+        let mut url = webhook_config.url.clone();
+        {
+            let mut path = url.path_segments_mut().unwrap();
+            path.push(&format!("bot{}", config.token));
+        }
+        debug!("webhook url: {}", &url);
+        let listener = webhooks::axum(
+            bot.clone(),
+            webhooks::Options::new(webhook_config.address, url),
+        )
+        .await?;
+        let webhook_info = bot.get_webhook_info().await?;
+        debug!("webhook info: {:#?}", webhook_info);
+        let error_handler =
+            LoggingErrorHandler::with_custom_text("An error from the update listener");
+        dispatcher
+            .dispatch_with_listener(listener, error_handler)
+            .await;
     } else {
         bot.delete_webhook().send().await?;
-        let polling = Polling::builder(bot)
+        let listener = Polling::builder(bot)
             .allowed_updates(allowed_updates)
             .build();
         let error_handler =
             LoggingErrorHandler::with_custom_text("An error from the update listener");
         dispatcher
-            .dispatch_with_listener(polling, error_handler)
+            .dispatch_with_listener(listener, error_handler)
             .await;
     };
 
@@ -87,6 +96,9 @@ enum UnauthorizedCommand {
 
     #[command(description = "пингануть всех")]
     Ping,
+
+    #[command(description = "сколько тут юзеров, кого пингуем")]
+    Count,
 
     #[command(description = "помощь")]
     Help,
@@ -174,6 +186,16 @@ async fn unauthorized_command_handler(
             if count > 0 {
                 reply(&bot, msg.chat.id, reply_to_msg_id, &buf).await;
             }
+        }
+        UnauthorizedCommand::Count => {
+            let count = storage.chat_members_count(msg.chat.id).await.unwrap();
+            reply(
+                &bot,
+                msg.chat.id,
+                msg.id,
+                &format!("В этом чате пингую `{}` пользователей", count),
+            )
+            .await;
         }
     }
     Ok(())
