@@ -110,6 +110,9 @@ enum Command {
     #[command(description = "добавить пользователя", parse_with = "split")]
     AddUser(String, String),
 
+    #[command(description = "миграция")]
+    MigrateFrom(String),
+
     #[command(description = "помощь")]
     Help,
 }
@@ -150,10 +153,7 @@ async fn unauthorized_command_handler(
 
             let mut buf = String::new();
             let mut count = 0;
-            if members.is_empty() {
-                reply(&bot, msg.chat.id, reply_to_msg_id, "А нет никого").await;
-                return Ok(());
-            }
+            let mut total = 0;
             for member in members {
                 if member.is_bot {
                     continue;
@@ -175,6 +175,7 @@ async fn unauthorized_command_handler(
                 };
                 let _ = write!(buf, " {}", mention);
                 count += 1;
+                total += 1;
 
                 if count >= 40 {
                     reply(&bot, msg.chat.id, reply_to_msg_id, &buf).await;
@@ -182,8 +183,15 @@ async fn unauthorized_command_handler(
                     count = 0;
                 }
             }
-
-            if count > 0 {
+            if total == 0 {
+                reply(
+                    &bot,
+                    msg.chat.id,
+                    reply_to_msg_id,
+                    "Тут нет никого, кроме нас",
+                )
+                .await;
+            } else if count > 0 {
                 reply(&bot, msg.chat.id, reply_to_msg_id, &buf).await;
             }
         }
@@ -226,34 +234,107 @@ async fn command_handler(
                 reply(&bot, msg.chat.id, msg.id, "Неправильный id пользователя").await;
                 return Ok(());
             };
-            if let Ok(ChatMember { user, kind }) = bot.get_chat_member(chat_id, user_id).await {
-                match kind {
-                    ChatMemberKind::Owner(_)
-                    | ChatMemberKind::Administrator(_)
-                    | ChatMemberKind::Member => {
-                        if let Err(err) = storage.new_member(chat_id, &user).await {
-                            error!("failed adding member: {}", err);
-                            reply(&bot, msg.chat.id, msg.id, "Пользователь не добавлен").await;
-                        } else {
-                            reply(&bot, msg.chat.id, msg.id, "Пользователь добавлен").await;
-                        }
-                    }
-                    ChatMemberKind::Left | ChatMemberKind::Banned(_) => {
-                        if let Err(err) = storage.delete_member(chat_id, user.id).await {
-                            error!("failed deleting member: {}", err);
-                            reply(&bot, msg.chat.id, msg.id, "Пользователь не удален").await;
-                        } else {
-                            reply(&bot, msg.chat.id, msg.id, "Пользователь удален").await;
-                        }
-                    }
-                    ChatMemberKind::Restricted(_) => {}
+            match check_member(&bot, &storage, chat_id, user_id).await {
+                Ok(true) => {
+                    reply(&bot, msg.chat.id, msg.id, "Пользователь есть в чате").await;
+                    return Ok(());
                 }
-            } else {
-                reply(&bot, msg.chat.id, msg.id, "Пользователь не найден").await;
+                Ok(false) => {
+                    reply(&bot, msg.chat.id, msg.id, "Пользователь не найден").await;
+                    return Ok(());
+                }
+                Err(err) => {
+                    error!("failed checking member: {}", err);
+                    reply(
+                        &bot,
+                        msg.chat.id,
+                        msg.id,
+                        &format!(
+                            "Ошибка\n```\n{}\n```",
+                            markdown::escape(&format!("{:#?}", err))
+                        ),
+                    )
+                    .await;
+                    return Ok(());
+                }
             }
         }
+        Command::MigrateFrom(version) => match version.as_str() {
+            "0.1" => {
+                if let Ok(members) = storage.old_members().await {
+                    let mut migrated = 0;
+                    for member in members {
+                        let chat_id = ChatId(member.chat_id);
+                        let Ok(user_id) = member.user_id.parse().map(UserId) else {
+                            reply(&bot, msg.chat.id, msg.id, "Неправильный id пользователя").await;
+                            continue;
+                        };
+                        match check_member(&bot, &storage, chat_id, user_id).await {
+                            Ok(true) => {
+                                migrated += 1;
+                            }
+                            Ok(false) => {}
+                            Err(err) => {
+                                error!("failed checking member: {}", err);
+                                reply(
+                                    &bot,
+                                    msg.chat.id,
+                                    msg.id,
+                                    &format!(
+                                        "Ошибка проверки `chat\\_id={}` `user\\_id={}`\n```\n{}\n```",
+                                        member.chat_id,
+                                        markdown::escape(&member.user_id),
+                                        markdown::escape(&format!("{:#?}", err))
+                                    ),
+                                ).await;
+                            }
+                        }
+                    }
+
+                    reply(
+                        &bot,
+                        msg.chat.id,
+                        msg.id,
+                        &format!("Успешно мигрировано {} пользователей", migrated),
+                    )
+                    .await;
+                }
+            }
+            _ => {
+                reply(
+                    &bot,
+                    msg.chat.id,
+                    msg.id,
+                    &format!("Нет миграции с версии `{}`", markdown::escape(&version)),
+                )
+                .await;
+                return Ok(());
+            }
+        },
     }
     Ok(())
+}
+
+/// Returns true if member is in chat, false otherwise
+async fn check_member(
+    bot: &MyBot,
+    storage: &Storage,
+    chat_id: ChatId,
+    user_id: UserId,
+) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+    let ChatMember { user, kind } = bot.get_chat_member(chat_id, user_id).await?;
+    match kind {
+        ChatMemberKind::Owner(_) | ChatMemberKind::Administrator(_) | ChatMemberKind::Member => {
+            storage.new_member(chat_id, &user).await?;
+            return Ok(true);
+        }
+        ChatMemberKind::Left | ChatMemberKind::Banned(_) => {
+            storage.delete_member(chat_id, user.id).await?;
+            return Ok(false);
+        }
+        ChatMemberKind::Restricted(_) => {}
+    }
+    Ok(false)
 }
 
 #[tracing::instrument(skip_all)]

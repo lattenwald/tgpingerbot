@@ -9,6 +9,8 @@ pub struct Storage {
     pool: sqlx::Pool<sqlx::Sqlite>,
 }
 
+mod v01;
+
 impl Storage {
     pub async fn init(file: &Path) -> Result<Self, Box<dyn std::error::Error>> {
         debug!("init storage");
@@ -23,8 +25,16 @@ impl Storage {
     async fn create_tables(pool: &sqlx::Pool<sqlx::Sqlite>) -> Result<(), sqlx::Error> {
         trace!("try create tables");
         sqlx::query(
-            "CREATE TABLE IF NOT EXISTS members (
+            "CREATE TABLE IF NOT EXISTS chat_members (
                 chat_id INTEGER NOT NULL,
+                user_id TEXT NOT NULL,
+                PRIMARY KEY (chat_id, user_id)
+            )",
+        )
+        .execute(pool)
+        .await?;
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS users (
                 user_id TEXT NOT NULL,
                 is_bot BOOLEAN NOT NULL DEFAULT FALSE,
                 username TEXT,
@@ -33,7 +43,7 @@ impl Storage {
                 language TEXT,
                 is_premium BOOLEAN NOT NULL DEFAULT FALSE,
                 added_to_attachment_menu BOOLEAN NOT NULL DEFAULT FALSE,
-                PRIMARY KEY (chat_id, user_id)
+                PRIMARY KEY (user_id)
             )",
         )
         .execute(pool)
@@ -43,14 +53,15 @@ impl Storage {
     }
 
     pub(crate) async fn new_member(&self, chat_id: ChatId, user: &User) -> Result<(), sqlx::Error> {
-        let result = sqlx::query(
+        let user_id = user.id.to_string();
+        sqlx::query(
             "INSERT
-            INTO members (
-                chat_id, user_id, is_bot, username, first_name,
+            INTO users (
+                user_id, is_bot, username, first_name,
                 last_name, language, is_premium, added_to_attachment_menu
                 )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT (chat_id, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (user_id)
             DO UPDATE SET
                 is_bot = EXCLUDED.is_bot,
                 username = EXCLUDED.username,
@@ -60,17 +71,23 @@ impl Storage {
                 is_premium = EXCLUDED.is_premium,
                 added_to_attachment_menu = EXCLUDED.added_to_attachment_menu",
         )
-        .bind(chat_id.0)
-        .bind(user.id.to_string())
+        .bind(&user_id)
         .bind(user.is_bot)
-        .bind(user.username.clone())
-        .bind(user.first_name.clone())
-        .bind(user.last_name.clone())
-        .bind(user.language_code.clone())
+        .bind(&user.username)
+        .bind(&user.first_name)
+        .bind(&user.last_name)
+        .bind(&user.language_code)
         .bind(user.is_premium)
         .bind(user.added_to_attachment_menu)
         .execute(&self.pool)
         .await?;
+
+        let result =
+            sqlx::query("INSERT OR IGNORE INTO chat_members (chat_id, user_id) VALUES (?, ?)")
+                .bind(chat_id.0)
+                .bind(&user_id)
+                .execute(&self.pool)
+                .await?;
         if result.rows_affected() > 0 {
             info!(
                 "added member chat_id: {} user_id: {} username: {:?} first_name: {} last_name: {}",
@@ -89,7 +106,7 @@ impl Storage {
         chat_id: ChatId,
         user_id: UserId,
     ) -> Result<(), sqlx::Error> {
-        let result = sqlx::query("DELETE FROM members WHERE chat_id = ? AND user_id = ?")
+        let result = sqlx::query("DELETE FROM chat_members WHERE chat_id = ? AND user_id = ?")
             .bind(chat_id.0)
             .bind(user_id.to_string())
             .execute(&self.pool)
@@ -101,26 +118,31 @@ impl Storage {
     }
 
     pub(crate) async fn chat_members(&self, chat_id: ChatId) -> Result<Vec<Member>, sqlx::Error> {
-        sqlx::query_as("SELECT * FROM members WHERE chat_id = ?")
+        sqlx::query_as("SELECT u.* FROM chat_members cm JOIN users u ON cm.user_id = u.user_id WHERE cm.chat_id = ? AND NOT(u.is_bot)")
             .bind(chat_id.0)
             .fetch_all(&self.pool)
             .await
     }
 
     pub(crate) async fn chat_members_count(&self, chat_id: ChatId) -> Result<u64, sqlx::Error> {
-        sqlx::query("SELECT COUNT(*) FROM members WHERE chat_id = ? AND NOT(is_bot)")
+        sqlx::query("SELECT COUNT(*) FROM chat_members cm JOIN users u ON cm.user_id = u.user_id WHERE cm.chat_id = ? AND NOT(u.is_bot)")
             .bind(chat_id.0)
             .fetch_one(&self.pool)
             .await
             .map(|row| row.get(0))
     }
+
+    pub(crate) async fn old_members(&self) -> Result<Vec<v01::MemberV01>, sqlx::Error> {
+        sqlx::query_as("SELECT * FROM members")
+            .fetch_all(&self.pool)
+            .await
+    }
 }
 
 #[derive(sqlx::FromRow)]
 pub(crate) struct Member {
-    pub(crate) chat_id: i64,
-    pub(crate) is_bot: bool,
     pub(crate) user_id: String,
+    pub(crate) is_bot: bool,
     pub(crate) username: Option<String>,
     pub(crate) first_name: String,
     pub(crate) last_name: Option<String>,

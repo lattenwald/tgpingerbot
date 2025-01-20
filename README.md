@@ -32,5 +32,3 @@ If `webhook` is present, bot will use webhook. If not, it will use long-polling.
 `/bot<token>` will be appended to webhook url. Bot will listen at `address`, make sure to proxy `url` to `address` with nginx or something.
 
 ## TODO
-
-- DB normal form
