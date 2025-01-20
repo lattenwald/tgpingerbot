@@ -260,8 +260,8 @@ async fn command_handler(
             }
         }
         Command::MigrateFrom(version) => match version.as_str() {
-            "0.1" => {
-                if let Ok(members) = storage.old_members().await {
+            "0.1" => match storage.old_members().await {
+                Ok(members) => {
                     let mut migrated = 0;
                     for member in members {
                         let chat_id = ChatId(member.chat_id);
@@ -299,7 +299,20 @@ async fn command_handler(
                     )
                     .await;
                 }
-            }
+                Err(err) => {
+                    error!("failed getting old members: {}", err);
+                    reply(
+                        &bot,
+                        msg.chat.id,
+                        msg.id,
+                        &format!(
+                            "Ошибка получения старых пользователей\n```\n{}\n```",
+                            markdown::escape(&format!("{:#?}", err))
+                        ),
+                    )
+                    .await;
+                }
+            },
             _ => {
                 reply(
                     &bot,
