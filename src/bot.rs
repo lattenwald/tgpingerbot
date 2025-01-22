@@ -4,8 +4,8 @@ use teloxide::{
     adaptors::{throttle::Limits, CacheMe, DefaultParseMode, Throttle},
     prelude::*,
     types::{
-        AllowedUpdate, ChatMember, ChatMemberKind, MessageId, MessageKind, ParseMode,
-        ReplyParameters, Update,
+        AllowedUpdate, ChatMember, ChatMemberKind, LinkPreviewOptions, MessageId, MessageKind,
+        ParseMode, ReplyParameters, Update,
     },
     update_listeners::{webhooks, Polling},
     utils::{command::BotCommands, markdown},
@@ -14,6 +14,8 @@ use teloxide::{
 use tracing::{debug, error, warn};
 
 use crate::{config::BotConfig, storage::Storage};
+
+const GIT: &str = "github.com/lattenwald/tgpingerbot";
 
 pub type MyBot = Throttle<CacheMe<DefaultParseMode<Bot>>>;
 pub type MyDispatcher =
@@ -139,13 +141,13 @@ async fn unauthorized_command_handler(
             }
         }
         UnauthorizedCommand::Help => {
-            reply(
-                &bot,
-                msg.chat.id,
-                msg.id,
-                &markdown::escape(&UnauthorizedCommand::descriptions().to_string()),
-            )
-            .await;
+            let help = format!(
+                "{}\n\n[{}](https://{})",
+                markdown::escape(&UnauthorizedCommand::descriptions().to_string()),
+                markdown::escape(GIT),
+                markdown::escape(GIT),
+            );
+            reply(&bot, msg.chat.id, msg.id, &help).await;
         }
         UnauthorizedCommand::Ping => {
             let reply_to_msg_id = msg.reply_to_message().map(|msg| msg.id).unwrap_or(msg.id);
@@ -169,7 +171,7 @@ async fn unauthorized_command_handler(
                     Some(username) => format!("@{}", markdown::escape(&username)),
                     None => format!(
                         "[{}](tg://user?id={})",
-                        markdown::escape(&member.first_name),
+                        markdown::escape(&member.full_name()),
                         member.user_id
                     ),
                 };
@@ -219,11 +221,13 @@ async fn command_handler(
     match cmd {
         Command::Help => {
             let help = format!(
-                "{}\n\n{}",
-                Command::descriptions(),
-                UnauthorizedCommand::descriptions()
+                "{}\n\n{}\n\n[{}](https://{})",
+                markdown::escape(&Command::descriptions().to_string()),
+                markdown::escape(&UnauthorizedCommand::descriptions().to_string()),
+                markdown::escape(GIT),
+                markdown::escape(GIT),
             );
-            reply(&bot, msg.chat.id, msg.id, &markdown::escape(&help)).await;
+            reply(&bot, msg.chat.id, msg.id, &help).await;
         }
         Command::AddUser(chat_id, user_id) => {
             let Ok(chat_id) = chat_id.parse::<i64>().map(ChatId) else {
@@ -402,6 +406,13 @@ async fn reply(bot: &MyBot, chat_id: ChatId, msg_id: MessageId, text: &str) {
         .reply_parameters(ReplyParameters {
             message_id: msg_id,
             ..Default::default()
+        })
+        .link_preview_options(LinkPreviewOptions {
+            is_disabled: true,
+            url: None,
+            prefer_small_media: true,
+            prefer_large_media: false,
+            show_above_text: false,
         })
         .await
     {
