@@ -165,3 +165,12 @@ impl From<Member> for User {
         }
     }
 }
+
+impl Member {
+    pub(crate) fn full_name(&self) -> String {
+        match &self.last_name {
+            Some(last_name) => format!("{0} {1}", self.first_name, last_name),
+            None => self.first_name.clone(),
+        }
+    }
+}
