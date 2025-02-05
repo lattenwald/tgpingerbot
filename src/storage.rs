@@ -53,6 +53,7 @@ impl Storage {
     }
 
     pub(crate) async fn new_member(&self, chat_id: ChatId, user: &User) -> Result<(), sqlx::Error> {
+        debug!("new member chat_id: {} user_id: {}", chat_id, user.id);
         let user_id = user.id.to_string();
         sqlx::query(
             "INSERT
@@ -106,6 +107,7 @@ impl Storage {
         chat_id: ChatId,
         user_id: UserId,
     ) -> Result<(), sqlx::Error> {
+        debug!("delete member chat_id: {} user_id: {}", chat_id, user_id);
         let result = sqlx::query("DELETE FROM chat_members WHERE chat_id = ? AND user_id = ?")
             .bind(chat_id.0)
             .bind(user_id.to_string())

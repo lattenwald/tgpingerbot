@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-clap = { version = "4.5.26", features = ["derive"] }
+clap = { version = "4.5.28", features = ["derive"] }
 serde = { version = "1.0.217", features = ["derive"] }
 serde_yml = "0.0.12"
 sqlx = { version = "0.8.3", default-features = false, features = ["sqlite", "macros", "runtime-tokio"] }

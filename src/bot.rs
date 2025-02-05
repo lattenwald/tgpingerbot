@@ -13,7 +13,7 @@ use teloxide::{
 };
 use tracing::{debug, error, warn};
 
-use crate::{config::BotConfig, storage::Storage};
+use crate::{config::BotConfig, storage::Storage, utils::DisplayMessageKind};
 
 const GIT: &str = "github.com/lattenwald/tgpingerbot";
 
@@ -218,6 +218,10 @@ async fn command_handler(
     cmd: Command,
     storage: Storage,
 ) -> ResponseResult<()> {
+    debug!("authorized command: {:?}", cmd);
+    if let Some(ref from) = msg.from {
+        let _ = storage.new_member(msg.chat.id, from).await;
+    }
     match cmd {
         Command::Help => {
             let help = format!(
@@ -333,6 +337,7 @@ async fn command_handler(
 }
 
 /// Returns true if member is in chat, false otherwise
+#[tracing::instrument(skip_all)]
 async fn check_member(
     bot: &MyBot,
     storage: &Storage,
@@ -340,6 +345,12 @@ async fn check_member(
     user_id: UserId,
 ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
     let ChatMember { user, kind } = bot.get_chat_member(chat_id, user_id).await?;
+    let span = tracing::span!(
+        tracing::Level::DEBUG,
+        "check_member",
+        kind = ?kind
+    );
+    let _enter = span.enter();
     match kind {
         ChatMemberKind::Owner(_) | ChatMemberKind::Administrator(_) | ChatMemberKind::Member => {
             storage.new_member(chat_id, &user).await?;
@@ -354,7 +365,7 @@ async fn check_member(
     Ok(false)
 }
 
-#[tracing::instrument(skip_all)]
+#[tracing::instrument(skip_all, fields(msg_kind = %DisplayMessageKind::new(&msg.kind)))]
 async fn message_handler(bot: MyBot, msg: Message, storage: Storage) -> ResponseResult<()> {
     match msg.kind {
         MessageKind::NewChatMembers(members) => {
