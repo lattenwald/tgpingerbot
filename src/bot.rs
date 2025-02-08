@@ -4,8 +4,8 @@ use teloxide::{
     adaptors::{throttle::Limits, CacheMe, DefaultParseMode, Throttle},
     prelude::*,
     types::{
-        AllowedUpdate, ChatMember, ChatMemberKind, LinkPreviewOptions, MessageId, MessageKind,
-        ParseMode, ReplyParameters, Update,
+        AllowedUpdate, ChatKind, ChatMember, ChatMemberKind, ChatPublic, LinkPreviewOptions,
+        MessageId, MessageKind, ParseMode, PublicChatKind, ReplyParameters, Update,
     },
     update_listeners::{webhooks, Polling},
     utils::{command::BotCommands, markdown},
@@ -115,6 +115,9 @@ enum Command {
     #[command(description = "миграция")]
     MigrateFrom(String),
 
+    #[command(description = "чаты с пользователями")]
+    Counts,
+
     #[command(description = "помощь")]
     Help,
 }
@@ -128,7 +131,7 @@ async fn unauthorized_command_handler(
 ) -> ResponseResult<()> {
     debug!("unauthorized command: {:?}", cmd);
     if let Some(ref from) = msg.from {
-        let _ = storage.new_member(msg.chat.id, from).await;
+        let _ = storage.new_member(&msg.chat, from).await;
     }
     match cmd {
         UnauthorizedCommand::Id => {
@@ -220,7 +223,7 @@ async fn command_handler(
 ) -> ResponseResult<()> {
     debug!("authorized command: {:?}", cmd);
     if let Some(ref from) = msg.from {
-        let _ = storage.new_member(msg.chat.id, from).await;
+        let _ = storage.new_member(&msg.chat, from).await;
     }
     match cmd {
         Command::Help => {
@@ -332,6 +335,19 @@ async fn command_handler(
                 return Ok(());
             }
         },
+        Command::Counts => {
+            let chats_with_counts = storage.chats_with_counts().await.unwrap();
+            let mut buf = "Юзеров по всем чатам:\n\n".to_string();
+            for (chat_id, title, count) in chats_with_counts {
+                let _ = writeln!(
+                    buf,
+                    "`{}`: `{}`\n",
+                    markdown::escape(&title.unwrap_or(chat_id.to_string())),
+                    count
+                );
+            }
+            reply(&bot, msg.chat.id, msg.id, &buf).await;
+        }
     }
     Ok(())
 }
@@ -345,6 +361,18 @@ async fn check_member(
     user_id: UserId,
 ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
     let ChatMember { user, kind } = bot.get_chat_member(chat_id, user_id).await?;
+    let chat = bot.get_chat(chat_id).await?;
+    let ChatKind::Public(ChatPublic {
+        kind: ref public_chat_kind,
+        ..
+    }) = chat.kind
+    else {
+        return Ok(false);
+    };
+    if let PublicChatKind::Channel(_) = public_chat_kind {
+        return Ok(false);
+    }
+
     let span = tracing::span!(
         tracing::Level::DEBUG,
         "check_member",
@@ -353,7 +381,7 @@ async fn check_member(
     let _enter = span.enter();
     match kind {
         ChatMemberKind::Owner(_) | ChatMemberKind::Administrator(_) | ChatMemberKind::Member => {
-            storage.new_member(chat_id, &user).await?;
+            storage.new_member(&chat, &user).await?;
             return Ok(true);
         }
         ChatMemberKind::Left | ChatMemberKind::Banned(_) => {
@@ -370,7 +398,7 @@ async fn message_handler(bot: MyBot, msg: Message, storage: Storage) -> Response
     match msg.kind {
         MessageKind::NewChatMembers(members) => {
             for user in members.new_chat_members {
-                if let Err(err) = storage.new_member(msg.chat.id, &user).await {
+                if let Err(err) = storage.new_member(&msg.chat, &user).await {
                     error!("failed adding member: {}", err);
                 }
             }
@@ -392,7 +420,7 @@ async fn message_handler(bot: MyBot, msg: Message, storage: Storage) -> Response
                         ChatMemberKind::Owner(_)
                         | ChatMemberKind::Administrator(_)
                         | ChatMemberKind::Member => {
-                            if let Err(err) = storage.new_member(msg.chat.id, &user).await {
+                            if let Err(err) = storage.new_member(&msg.chat, &user).await {
                                 error!("failed adding member: {}", err);
                             }
                         }

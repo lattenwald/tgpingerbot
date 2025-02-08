@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use sqlx::{sqlite::SqliteConnectOptions, Row, SqlitePool};
-use teloxide::types::{ChatId, User, UserId};
+use teloxide::types::{Chat, ChatId, ChatKind, ChatPublic, PublicChatKind, User, UserId};
 use tracing::{debug, info, trace};
 
 #[derive(Debug, Clone)]
@@ -24,6 +24,7 @@ impl Storage {
 
     async fn create_tables(pool: &sqlx::Pool<sqlx::Sqlite>) -> Result<(), sqlx::Error> {
         trace!("try create tables");
+
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS chat_members (
                 chat_id INTEGER NOT NULL,
@@ -33,6 +34,7 @@ impl Storage {
         )
         .execute(pool)
         .await?;
+
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS users (
                 user_id TEXT NOT NULL,
@@ -49,11 +51,35 @@ impl Storage {
         .execute(pool)
         .await?;
 
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS chats (
+                chat_id INTEGER NOT NULL,
+                title TEXT,
+                username TEXT,
+                PRIMARY KEY (chat_id)
+            )",
+        )
+        .execute(pool)
+        .await?;
+
         Ok(())
     }
 
-    pub(crate) async fn new_member(&self, chat_id: ChatId, user: &User) -> Result<(), sqlx::Error> {
-        debug!("new member chat_id: {} user_id: {}", chat_id, user.id);
+    pub(crate) async fn new_member(&self, chat: &Chat, user: &User) -> Result<(), sqlx::Error> {
+        let ChatKind::Public(ChatPublic {
+            kind: ref public_chat_kind,
+            ..
+        }) = chat.kind
+        else {
+            debug!("chat is not public");
+            return Ok(());
+        };
+        if let PublicChatKind::Channel(_) = public_chat_kind {
+            debug!("chat is channel");
+            return Ok(());
+        }
+        debug!("new member chat_id: {} user_id: {}", chat.id, user.id);
+
         let user_id = user.id.to_string();
         sqlx::query(
             "INSERT
@@ -83,16 +109,31 @@ impl Storage {
         .execute(&self.pool)
         .await?;
 
+        sqlx::query(
+            "INSERT
+            INTO chats (chat_id, title, username)
+            VALUES (?, ?, ?)
+            ON CONFLICT (chat_id)
+            DO UPDATE SET
+                title = EXCLUDED.title,
+                username = EXCLUDED.username",
+        )
+        .bind(chat.id.0)
+        .bind(chat.title())
+        .bind(chat.username())
+        .execute(&self.pool)
+        .await?;
+
         let result =
             sqlx::query("INSERT OR IGNORE INTO chat_members (chat_id, user_id) VALUES (?, ?)")
-                .bind(chat_id.0)
+                .bind(chat.id.0)
                 .bind(&user_id)
                 .execute(&self.pool)
                 .await?;
         if result.rows_affected() > 0 {
             info!(
                 "added member chat_id: {} user_id: {} username: {:?} first_name: {} last_name: {}",
-                chat_id,
+                chat.id,
                 user.id,
                 &user.username.as_ref().map_or("<none>", |v| v),
                 &user.first_name,
@@ -132,6 +173,14 @@ impl Storage {
             .fetch_one(&self.pool)
             .await
             .map(|row| row.get(0))
+    }
+
+    pub(crate) async fn chats_with_counts(
+        &self,
+    ) -> Result<Vec<(i64, Option<String>, u64)>, sqlx::Error> {
+        sqlx::query_as("SELECT c.chat_id, c.title, COUNT(cm.user_id) FROM chats c JOIN chat_members cm ON c.chat_id = cm.chat_id ORDER BY c.chat_id")
+            .fetch_all(&self.pool)
+            .await
     }
 
     pub(crate) async fn old_members(&self) -> Result<Vec<v01::MemberV01>, sqlx::Error> {
