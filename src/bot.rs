@@ -159,11 +159,14 @@ async fn unauthorized_command_handler(
             let mut buf = if let Some(u) = msg.from.as_ref() {
                 format!(
                     "{} вызывает\\!\n\n",
-                    u.username
-                        .as_ref()
-                        .map_or(markdown::escape(&u.full_name()), |n| {
-                            format!("@{}", markdown::escape(n))
-                        })
+                    u.username.as_ref().map_or(
+                        format!(
+                            "[{}](tg://user?id={})",
+                            markdown::escape(&u.full_name()),
+                            u.id
+                        ),
+                        |n| { format!("@{}", markdown::escape(n)) }
+                    )
                 )
             } else {
                 String::new()
