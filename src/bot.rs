@@ -156,7 +156,19 @@ async fn unauthorized_command_handler(
             let reply_to_msg_id = msg.reply_to_message().map(|msg| msg.id).unwrap_or(msg.id);
             let members = storage.chat_members(msg.chat.id).await.unwrap();
 
-            let mut buf = String::new();
+            let mut buf = if let Some(u) = msg.from.as_ref() {
+                format!(
+                    "{} вызывает\\!\n\n",
+                    u.username
+                        .as_ref()
+                        .map_or(markdown::escape(&u.full_name()), |n| {
+                            format!("@{}", markdown::escape(n))
+                        })
+                )
+            } else {
+                String::new()
+            };
+
             let mut count = 0;
             let mut total = 0;
             for member in members {
