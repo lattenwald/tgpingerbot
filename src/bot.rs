@@ -4,8 +4,9 @@ use teloxide::{
     adaptors::{throttle::Limits, CacheMe, DefaultParseMode, Throttle},
     prelude::*,
     types::{
-        AllowedUpdate, ChatKind, ChatMember, ChatMemberKind, ChatPublic, LinkPreviewOptions,
-        MessageId, MessageKind, ParseMode, PublicChatKind, ReplyParameters, Update,
+        AllowedUpdate, BotCommandScope, ChatKind, ChatMember, ChatMemberKind, ChatPublic,
+        LinkPreviewOptions, MessageId, MessageKind, ParseMode, PublicChatKind, Recipient,
+        ReplyParameters, Update,
     },
     update_listeners::{webhooks, Polling},
     utils::{command::BotCommands, markdown},
@@ -29,6 +30,25 @@ pub async fn start_bot(
         .parse_mode(ParseMode::MarkdownV2)
         .cache_me()
         .throttle(Limits::default());
+
+    if let Err(err) = bot
+        .set_my_commands(UnauthorizedCommand::bot_commands())
+        .await
+    {
+        error!("failed setting commands (default scope): {}", err);
+    }
+
+    if let Some(chat_id) = config.admin_id {
+        if let Err(err) = bot
+            .set_my_commands(Command::bot_commands())
+            .scope(BotCommandScope::Chat {
+                chat_id: Recipient::Id(ChatId(chat_id)),
+            })
+            .await
+        {
+            error!("failed setting commands (admin scope): {}", err);
+        }
+    }
 
     let handler = Update::filter_message()
         .branch(
