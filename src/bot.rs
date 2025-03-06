@@ -39,8 +39,10 @@ pub async fn start_bot(
     }
 
     if let Some(chat_id) = config.admin_id {
+        let mut commands = Command::bot_commands();
+        commands.extend(UnauthorizedCommand::bot_commands());
         if let Err(err) = bot
-            .set_my_commands(Command::bot_commands())
+            .set_my_commands(commands)
             .scope(BotCommandScope::Chat {
                 chat_id: Recipient::Id(ChatId(chat_id)),
             })
