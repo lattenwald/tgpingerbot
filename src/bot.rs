@@ -33,6 +33,7 @@ pub async fn start_bot(
 
     if let Err(err) = bot
         .set_my_commands(UnauthorizedCommand::bot_commands())
+        .scope(BotCommandScope::AllGroupChats)
         .await
     {
         error!("failed setting commands (default scope): {}", err);
@@ -40,7 +41,11 @@ pub async fn start_bot(
 
     if let Some(chat_id) = config.admin_id {
         let mut commands = Command::bot_commands();
-        commands.extend(UnauthorizedCommand::bot_commands());
+        if let Ok(admin_chat) = bot.get_chat(ChatId(chat_id)).await {
+            if admin_chat.is_group() {
+                commands.extend(UnauthorizedCommand::bot_commands());
+            }
+        }
         if let Err(err) = bot
             .set_my_commands(commands)
             .scope(BotCommandScope::Chat {
