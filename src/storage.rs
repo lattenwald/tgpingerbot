@@ -178,7 +178,7 @@ impl Storage {
     pub(crate) async fn chats_with_counts(
         &self,
     ) -> Result<Vec<(i64, Option<String>, u64)>, sqlx::Error> {
-        sqlx::query_as("SELECT c.chat_id, c.title, COUNT(cm.user_id) FROM chats c JOIN chat_members cm ON c.chat_id = cm.chat_id ORDER BY c.chat_id")
+        sqlx::query_as("SELECT c.chat_id, c.title, COUNT(cm.user_id) FROM chats c JOIN chat_members cm ON c.chat_id = cm.chat_id LEFT JOIN users u ON cm.user_id = u.user_id WHERE NOT u.is_bot ORDER BY c.chat_id")
             .fetch_all(&self.pool)
             .await
     }
