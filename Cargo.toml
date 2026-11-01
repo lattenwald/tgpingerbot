@@ -2,6 +2,7 @@
 name = "tgpingbot"
 version = "0.2.2"
 edition = "2021"
+license = "MIT"
 
 [dependencies]
 clap = { version = "4.5.31", features = ["derive"] }
